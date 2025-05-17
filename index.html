@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大容量ファイルアップロードシステム</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-container {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .disk-space-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        .disk-space-info .loading {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .disk-space-info .error {
+            color: #dc3545;
+        }
+        .disk-space-bar {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .disk-space-used {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .disk-space-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .file-input {
+            margin-bottom: 20px;
+        }
+        .file-input input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .upload-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        .upload-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .file-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .file-name {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .progress {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+    </style>
+</head>
+<body>
+    <h1>大容量ファイルアップロードシステム</h1>
+    
+    <div class="upload-container">
+        <div id="diskSpaceInfo" class="disk-space-info">
+            <div class="loading">サーバーの空き容量を確認中...</div>
+        </div>
+        
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="file-input">
+                <input type="file" id="fileInput" name="files[]" multiple>
+            </div>
+            <button type="button" id="uploadButton" class="upload-btn">アップロード開始</button>
+        </form>
+        
+        <div id="progressContainer" class="progress-container">
+            <div id="fileList"></div>
+        </div>
+        
+        <div id="statusMessages" class="status"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadForm = document.getElementById('uploadForm');
+            const fileInput = document.getElementById('fileInput');
+            const uploadButton = document.getElementById('uploadButton');
+            const progressContainer = document.getElementById('progressContainer');
+            const fileList = document.getElementById('fileList');
+            const statusMessages = document.getElementById('statusMessages');
+            const diskSpaceInfo = document.getElementById('diskSpaceInfo');
+            
+            // Check if the browser supports the required APIs
+            if (!window.File || !window.FileReader || !window.FileList || !window.Blob || !window.XMLHttpRequest) {
+                statusMessages.innerHTML = '<div class="error">お使いのブラウザはファイルAPIをサポートしていません。最新のブラウザをご使用ください。</div>';
+                uploadButton.disabled = true;
+                return;
+            }
+            
+            // Check if system is configured
+            checkSystemConfiguration();
+            
+            // Fetch disk space information
+            fetchDiskSpaceInfo();
+            
+            // Refresh disk space info every 30 seconds
+            setInterval(fetchDiskSpaceInfo, 30000);
+            
+            // Function to check if system is configured
+            function checkSystemConfiguration() {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', 'setup.php', true);
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (!response.isConfigured) {
+                                // Redirect to setup page if not configured
+                                window.location.href = 'setup.html';
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse server response:', e);
+                        }
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    console.error('Failed to communicate with server');
+                };
+                
+                xhr.send();
+            }
+            
+            // Handle file selection
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files.length > 0) {
+                    uploadButton.disabled = false;
+                } else {
+                    uploadButton.disabled = true;
+                }
+            });
+            
+            // Handle upload button click
+            uploadButton.addEventListener('click', function() {
+                if (fileInput.files.length === 0) {
+                    statusMessages.innerHTML = '<div class="error">アップロードするファイルを選択してください。</div>';
+                    return;
+                }
+                
+                // Clear previous uploads
+                fileList.innerHTML = '';
+                statusMessages.innerHTML = '';
+                progressContainer.style.display = 'block';
+                uploadButton.disabled = true;
+                
+                // Create a progress item for each file
+                const files = fileInput.files;
+                const totalFiles = files.length;
+                let completedFiles = 0;
+                
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    uploadFile(file, i);
+                }
+                
+                function uploadFile(file, index) {
+                    // Create progress elements for this file
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    
+                    const fileName = document.createElement('div');
+                    fileName.className = 'file-name';
+                    fileName.textContent = file.name + ' (' + formatFileSize(file.size) + ')';
+                    
+                    const progressDiv = document.createElement('div');
+                    progressDiv.className = 'progress';
+                    
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'progress-bar';
+                    
+                    const progressText = document.createElement('div');
+                    progressText.className = 'progress-text';
+                    
+                    const percentText = document.createElement('span');
+                    percentText.textContent = '0%';
+                    
+                    const sizeText = document.createElement('span');
+                    sizeText.textContent = '0 / ' + formatFileSize(file.size);
+                    
+                    progressText.appendChild(percentText);
+                    progressText.appendChild(sizeText);
+                    progressDiv.appendChild(progressBar);
+                    
+                    fileItem.appendChild(fileName);
+                    fileItem.appendChild(progressDiv);
+                    fileItem.appendChild(progressText);
+                    
+                    fileList.appendChild(fileItem);
+                    
+                    // Create FormData and append the file
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    // Create and configure XMLHttpRequest
+                    const xhr = new XMLHttpRequest();
+                    
+                    // Track upload progress
+                    xhr.upload.addEventListener('progress', function(e) {
+                        if (e.lengthComputable) {
+                            const percent = Math.round((e.loaded / e.total) * 100);
+                            progressBar.style.width = percent + '%';
+                            percentText.textContent = percent + '%';
+                            sizeText.textContent = formatFileSize(e.loaded) + ' / ' + formatFileSize(e.total);
+                        }
+                    });
+                    
+                    // Handle response
+                    xhr.addEventListener('load', function() {
+                        completedFiles++;
+                        
+                        if (xhr.status === 200) {
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                if (response.success) {
+                                    fileItem.style.backgroundColor = '#dff0d8';
+                                    fileName.style.color = '#3c763d';
+                                    
+                                    // Refresh disk space info after successful upload
+                                    fetchDiskSpaceInfo();
+                                } else {
+                                    fileItem.style.backgroundColor = '#f2dede';
+                                    fileName.style.color = '#a94442';
+                                    fileName.textContent += ' - エラー: ' + response.message;
+                                }
+                            } catch (e) {
+                                fileItem.style.backgroundColor = '#f2dede';
+                                fileName.style.color = '#a94442';
+                                fileName.textContent += ' - エラー: レスポンスの解析に失敗しました';
+                            }
+                        } else {
+                            fileItem.style.backgroundColor = '#f2dede';
+                            fileName.style.color = '#a94442';
+                            fileName.textContent += ' - エラー: サーバーエラー (' + xhr.status + ')';
+                        }
+                        
+                        // Check if all files are completed
+                        if (completedFiles === totalFiles) {
+                            uploadButton.disabled = false;
+                        }
+                    });
+                    
+                    // Handle errors
+                    xhr.addEventListener('error', function() {
+                        completedFiles++;
+                        fileItem.style.backgroundColor = '#f2dede';
+                        fileName.style.color = '#a94442';
+                        fileName.textContent += ' - エラー: ネットワークエラー';
+                        
+                        if (completedFiles === totalFiles) {
+                            uploadButton.disabled = false;
+                        }
+                    });
+                    
+                    // Handle abort
+                    xhr.addEventListener('abort', function() {
+                        completedFiles++;
+                        fileItem.style.backgroundColor = '#fcf8e3';
+                        fileName.style.color = '#8a6d3b';
+                        fileName.textContent += ' - キャンセルされました';
+                        
+                        if (completedFiles === totalFiles) {
+                            uploadButton.disabled = false;
+                        }
+                    });
+                    
+                    // Send the request
+                    xhr.open('POST', 'upload.php', true);
+                    xhr.send(formData);
+                }
+            });
+            
+            // Function to fetch disk space information
+            function fetchDiskSpaceInfo() {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', 'setup.php', true);
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                updateDiskSpaceInfo(response);
+                            } else {
+                                diskSpaceInfo.innerHTML = '<div class="error">サーバー情報の取得に失敗しました。</div>';
+                            }
+                        } catch (e) {
+                            diskSpaceInfo.innerHTML = '<div class="error">サーバーレスポンスの解析に失敗しました。</div>';
+                        }
+                    } else {
+                        diskSpaceInfo.innerHTML = '<div class="error">サーバー情報の取得に失敗しました。ステータス: ' + xhr.status + '</div>';
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    diskSpaceInfo.innerHTML = '<div class="error">サーバーとの通信に失敗しました。</div>';
+                };
+                
+                xhr.send();
+            }
+            
+            // Function to update disk space information in the UI
+            function updateDiskSpaceInfo(data) {
+                const diskSpace = data.rootDiskSpace;
+                const percentUsed = diskSpace.percentUsed.toFixed(1);
+                const directoryStatus = data.directoryStatus;
+                
+                let html = '<h3>サーバー情報</h3>';
+                
+                // Disk space information
+                html += '<div><strong>ディスク容量:</strong> ' + diskSpace.totalFormatted + '</div>';
+                html += '<div><strong>使用中:</strong> ' + diskSpace.usedFormatted + ' (' + percentUsed + '%)</div>';
+                html += '<div><strong>空き容量:</strong> ' + diskSpace.freeFormatted + '</div>';
+                
+                // Disk space bar
+                html += '<div class="disk-space-bar">';
+                html += '<div class="disk-space-used" style="width: ' + percentUsed + '%;"></div>';
+                html += '</div>';
+                
+                // Max upload size
+                html += '<div><strong>最大アップロードサイズ:</strong> ' + data.maxUploadSizeFormatted + '</div>';
+                
+                // Allowed file types
+                if (data.allowedFileExtensions && data.allowedFileExtensions.length > 0) {
+                    html += '<div><strong>許可されているファイル拡張子:</strong> ' + data.allowedFileExtensions.join(', ') + '</div>';
+                } else {
+                    html += '<div><strong>許可されているファイル拡張子:</strong> すべて</div>';
+                }
+                
+                // Directory status
+                if (!directoryStatus.exists) {
+                    html += '<div class="error">アップロードディレクトリが存在しません。</div>';
+                } else if (!directoryStatus.writable) {
+                    html += '<div class="error">アップロードディレクトリに書き込み権限がありません。</div>';
+                }
+                
+                diskSpaceInfo.innerHTML = html;
+            }
+            
+            // Helper function to format file size
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 B';
+                
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+        });
+    </script>
+</body>
+</html>

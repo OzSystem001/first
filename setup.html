@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ファイルアップロードシステム - 初期設定</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .setup-container {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .submit-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .submit-btn:hover {
+            background-color: #45a049;
+        }
+        .disk-space-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        .disk-space-info .loading {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .disk-space-bar {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .disk-space-used {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .note {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>ファイルアップロードシステム - 初期設定</h1>
+    
+    <div class="setup-container">
+        <div id="diskSpaceInfo" class="disk-space-info">
+            <div class="loading">サーバーの情報を取得中...</div>
+        </div>
+        
+        <form id="setupForm">
+            <div class="form-group">
+                <label for="maxUploadSize">最大アップロードサイズ (GB)</label>
+                <input type="number" id="maxUploadSize" name="maxUploadSize" min="1" max="100" value="10">
+                <div class="note">1GB〜100GBの間で指定してください。</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="uploadDirectory">アップロードディレクトリ</label>
+                <input type="text" id="uploadDirectory" name="uploadDirectory" value="uploads">
+                <div class="note">相対パスまたは絶対パスで指定してください。デフォルトは「uploads」サブディレクトリです。</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="allowedFileTypes">許可するファイル拡張子</label>
+                <input type="text" id="allowedFileTypes" name="allowedFileTypes" placeholder="例: jpg, png, pdf, zip">
+                <div class="note">カンマ区切りで指定してください。空の場合はすべてのファイルタイプが許可されます。</div>
+            </div>
+            
+            <button type="submit" class="submit-btn">設定を保存</button>
+        </form>
+        
+        <div id="statusMessage" class="status"></div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const setupForm = document.getElementById('setupForm');
+            const diskSpaceInfo = document.getElementById('diskSpaceInfo');
+            const statusMessage = document.getElementById('statusMessage');
+            const uploadDirectoryInput = document.getElementById('uploadDirectory');
+            
+            // Fetch server information
+            fetchServerInfo();
+            
+            // Handle form submission
+            setupForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Get form values
+                const maxUploadSize = document.getElementById('maxUploadSize').value;
+                const uploadDirectory = document.getElementById('uploadDirectory').value;
+                const allowedFileTypes = document.getElementById('allowedFileTypes').value;
+                
+                // Validate input
+                if (maxUploadSize < 1 || maxUploadSize > 100) {
+                    showStatus(false, '最大アップロードサイズは1GB〜100GBの間で指定してください。');
+                    return;
+                }
+                
+                // Create FormData
+                const formData = new FormData();
+                formData.append('maxUploadSize', maxUploadSize);
+                formData.append('uploadDirectory', uploadDirectory);
+                formData.append('allowedFileTypes', allowedFileTypes);
+                
+                // Send request
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', 'setup.php', true);
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                showStatus(true, response.message);
+                                
+                                // Redirect to index.html after 2 seconds
+                                setTimeout(function() {
+                                    window.location.href = 'index.html';
+                                }, 2000);
+                            } else {
+                                showStatus(false, response.message);
+                            }
+                        } catch (e) {
+                            showStatus(false, 'レスポンスの解析に失敗しました。');
+                        }
+                    } else {
+                        showStatus(false, 'サーバーエラーが発生しました。');
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    showStatus(false, 'サーバーとの通信に失敗しました。');
+                };
+                
+                xhr.send(formData);
+            });
+            
+            // Function to fetch server information
+            function fetchServerInfo() {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', 'setup.php', true);
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                updateServerInfo(response);
+                                
+                                // Set default upload directory if available
+                                if (response.isConfigured && uploadDirectoryInput.value === '') {
+                                    uploadDirectoryInput.value = response.uploadDirectory || '';
+                                }
+                            } else {
+                                diskSpaceInfo.innerHTML = '<div class="error">サーバー情報の取得に失敗しました。</div>';
+                            }
+                        } catch (e) {
+                            diskSpaceInfo.innerHTML = '<div class="error">サーバーレスポンスの解析に失敗しました。</div>';
+                        }
+                    } else {
+                        diskSpaceInfo.innerHTML = '<div class="error">サーバー情報の取得に失敗しました。ステータス: ' + xhr.status + '</div>';
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    diskSpaceInfo.innerHTML = '<div class="error">サーバーとの通信に失敗しました。</div>';
+                };
+                
+                xhr.send();
+            }
+            
+            // Function to update server information in the UI
+            function updateServerInfo(data) {
+                const rootDiskSpace = data.rootDiskSpace;
+                const percentUsed = rootDiskSpace.percentUsed.toFixed(1);
+                const directoryStatus = data.directoryStatus;
+                const settingsStatus = data.settingsStatus;
+                
+                let html = '<h3>サーバー情報</h3>';
+                
+                // Disk space information
+                html += '<div><strong>ディスク容量:</strong> ' + rootDiskSpace.totalFormatted + '</div>';
+                html += '<div><strong>使用中:</strong> ' + rootDiskSpace.usedFormatted + ' (' + percentUsed + '%)</div>';
+                html += '<div><strong>空き容量:</strong> ' + rootDiskSpace.freeFormatted + '</div>';
+                
+                // Disk space bar
+                html += '<div class="disk-space-bar">';
+                html += '<div class="disk-space-used" style="width: ' + percentUsed + '%;"></div>';
+                html += '</div>';
+                
+                // PHP upload limits
+                html += '<div><strong>PHP最大アップロードサイズ:</strong> ' + data.phpUploadLimitFormatted + '</div>';
+                
+                // Configuration status
+                if (data.isConfigured) {
+                    html += '<div><strong>設定状態:</strong> <span style="color: #3c763d;">設定済み</span></div>';
+                    html += '<div><strong>現在の最大アップロードサイズ:</strong> ' + data.maxUploadSizeFormatted + '</div>';
+                    
+                    // Show allowed file types if configured
+                    if (data.allowedFileExtensions && data.allowedFileExtensions.length > 0) {
+                        html += '<div><strong>許可されているファイル拡張子:</strong> ' + data.allowedFileExtensions.join(', ') + '</div>';
+                    } else {
+                        html += '<div><strong>許可されているファイル拡張子:</strong> すべて</div>';
+                    }
+                } else {
+                    html += '<div><strong>設定状態:</strong> <span style="color: #a94442;">未設定</span></div>';
+                }
+                
+                // Directory status
+                if (!directoryStatus.exists) {
+                    html += '<div class="note">アップロードディレクトリは設定時に自動的に作成されます。</div>';
+                } else if (!directoryStatus.writable) {
+                    html += '<div class="error">アップロードディレクトリに書き込み権限がありません。</div>';
+                }
+                
+                diskSpaceInfo.innerHTML = html;
+            }
+            
+            // Function to show status message
+            function showStatus(success, message) {
+                statusMessage.innerHTML = message;
+                statusMessage.className = 'status ' + (success ? 'success' : 'error');
+                statusMessage.style.display = 'block';
+                
+                // Scroll to status message
+                statusMessage.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+    </script>
+</body>
+</html>
